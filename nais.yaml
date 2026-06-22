@@ -10,10 +10,10 @@ spec:
     - https://galning.nav.no/api/callback
     - https://galning.intern.nav.no/internal/api/authorize
   liveness:
-    path: /healthz
+    path: /internal/healthz
     initialDelay: 5
   readiness:
-    path: /healthz
+    path: /internal/healthz
     initialDelay: 5
   env:
     - name: BIGQUERY_PROJECT
