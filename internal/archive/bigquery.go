@@ -3,10 +3,12 @@ package archive
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"cloud.google.com/go/bigquery"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 
 	gh "github.com/navikt/galning/internal/github"
@@ -185,23 +187,8 @@ func toRow(e gh.AuditEvent) (*Row, error) {
 	}, nil
 }
 
-// isAlreadyExists reports whether a BigQuery error is a "table already exists" error.
+// isAlreadyExists reports whether err is a BigQuery "already exists" (HTTP 409) error.
 func isAlreadyExists(err error) bool {
-	if err == nil {
-		return false
-	}
-	return containsCode(err, 409)
-}
-
-func containsCode(err error, code int) bool {
-	type coder interface{ Code() int }
-	if c, ok := err.(coder); ok && c.Code() == code {
-		return true
-	}
-	// google.golang.org/api/googleapi errors embed the code differently
-	type googleErr interface {
-		Error() string
-	}
-	_ = googleErr(nil)
-	return false
+	var e *googleapi.Error
+	return errors.As(err, &e) && e.Code == 409
 }
