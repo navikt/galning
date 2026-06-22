@@ -34,17 +34,8 @@ spec:
     bigQueryDatasets:
       - name: galning
         permission: READWRITE
-    permissions:
-      - resource:
-          apiVersion: secretmanager.cnrm.cloud.google.com/v1beta1
-          kind: SecretManagerSecret
-          name: galning-oauth-tokens
-        role: roles/secretmanager.secretAccessor
-      - resource:
-          apiVersion: secretmanager.cnrm.cloud.google.com/v1beta1
-          kind: SecretManagerSecret
-          name: galning-oauth-tokens
-        role: roles/secretmanager.secretVersionAdder
+    buckets:
+      - name: galning
   resources:
     requests:
       cpu: 50m
