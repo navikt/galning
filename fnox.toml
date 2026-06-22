@@ -1,0 +1,10 @@
+default_provider = "keychain"
+
+[providers.keychain]
+type = "keychain"
+service = "galning"
+prefix = "galning-"
+
+[secrets]
+GITHUB_CLIENT_ID= { provider = "keychain", value = "GITHUB_CLIENT_ID" }
+GITHUB_CLIENT_SECRET= { provider = "keychain", value = "GITHUB_CLIENT_SECRET" }
