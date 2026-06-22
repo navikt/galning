@@ -12,33 +12,57 @@ import (
 	"github.com/navikt/galning/internal/github"
 )
 
-const dryRunLimit = 50
+const (
+	dryRunLimit    = 50
+	insertBatchSize = 1000
+)
 
 // Run performs a single Ingest Run: derives the Cursor from the Archive,
 // fetches new Audit Events from GitHub, and inserts them into the Archive.
+// Events are buffered into batches of insertBatchSize before each insert,
+// so a rate-limit or failure mid-run will still preserve already-inserted batches.
 func Run(ctx context.Context, cfg config.Config, arc *archive.Archive, ghClient *github.Client) error {
 	cursor, err := arc.LatestCursor(ctx, cfg.GithubOrg)
 	if err != nil {
 		return fmt.Errorf("derive cursor: %w", err)
 	}
 
-	events, err := ghClient.AuditEvents(ctx, cfg.GithubOrg, cursor)
+	var (
+		buf   []github.AuditEvent
+		total int
+	)
+
+	err = ghClient.AuditEvents(ctx, cfg.GithubOrg, cursor, func(page []github.AuditEvent) error {
+		buf = append(buf, page...)
+		if len(buf) < insertBatchSize {
+			return nil
+		}
+		if err := arc.Insert(ctx, buf); err != nil {
+			return fmt.Errorf("insert batch: %w", err)
+		}
+		total += len(buf)
+		slog.Info("inserted batch", "count", len(buf), "total_so_far", total)
+		buf = buf[:0]
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("fetch audit events: %w", err)
 	}
 
-	if len(events) == 0 {
+	// Flush remaining events that didn't fill a full batch.
+	if len(buf) > 0 {
+		if err := arc.Insert(ctx, buf); err != nil {
+			return fmt.Errorf("insert final batch: %w", err)
+		}
+		total += len(buf)
+	}
+
+	if total == 0 {
 		slog.Info("no new audit events — archive is up to date")
 		return nil
 	}
 
-	slog.Info("fetched audit events", "count", len(events))
-
-	if err := arc.Insert(ctx, events); err != nil {
-		return fmt.Errorf("insert events: %w", err)
-	}
-
-	slog.Info("ingest run complete", "inserted", len(events))
+	slog.Info("ingest run complete", "inserted", total)
 	return nil
 }
 

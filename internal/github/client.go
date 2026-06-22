@@ -59,19 +59,17 @@ func (c *Client) token(ctx context.Context) (string, error) {
 	return pair.AccessToken, nil
 }
 
-// AuditEvents fetches all Audit Events for org since afterCursor.
-// Pass an empty string to fetch from the start of GitHub's retention window.
-// Events are returned oldest-first.
-func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string) ([]AuditEvent, error) {
+// AuditEvents fetches Audit Events for org since afterCursor, calling fn for
+// each page of results. Pass an empty string to fetch from the start of
+// GitHub's retention window. Events are delivered oldest-first.
+// If fn returns an error, fetching stops and that error is returned.
+func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string, fn func([]AuditEvent) error) error {
 	token, err := c.token(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var (
-		events  []AuditEvent
-		nextURL = fmt.Sprintf("%s/orgs/%s/audit-log?per_page=%d&order=asc", apiBase, org, pageSize)
-	)
+	nextURL := fmt.Sprintf("%s/orgs/%s/audit-log?per_page=%d&order=asc", apiBase, org, pageSize)
 	if afterCursor != "" {
 		nextURL += "&after=" + afterCursor
 	}
@@ -79,7 +77,7 @@ func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string) ([]Au
 	for nextURL != "" {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL, nil)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Accept", "application/vnd.github+json")
@@ -87,40 +85,46 @@ func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string) ([]Au
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("fetch audit log page: %w", err)
+			return fmt.Errorf("fetch audit log page: %w", err)
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close() // #nosec G104
 		if err != nil {
-			return nil, fmt.Errorf("read audit log response: %w", err)
+			return fmt.Errorf("read audit log response: %w", err)
 		}
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("audit log: status %d: %s", resp.StatusCode, body)
+			return fmt.Errorf("audit log: status %d: %s", resp.StatusCode, body)
 		}
 
 		var rawEvents []json.RawMessage
 		if err := json.Unmarshal(body, &rawEvents); err != nil {
-			return nil, fmt.Errorf("unmarshal audit log page: %w", err)
+			return fmt.Errorf("unmarshal audit log page: %w", err)
 		}
 		if len(rawEvents) == 0 {
 			break
 		}
 
+		page := make([]AuditEvent, 0, len(rawEvents))
 		for _, raw := range rawEvents {
 			var e AuditEvent
 			if err := json.Unmarshal(raw, &e); err != nil {
-				return nil, fmt.Errorf("unmarshal audit event: %w", err)
+				return fmt.Errorf("unmarshal audit event: %w", err)
 			}
 			e.Raw = raw
-			events = append(events, e)
+			page = append(page, e)
 		}
 
-		slog.Info("fetched page", "count", len(rawEvents), "total_so_far", len(events))
+		slog.Info("fetched page", "count", len(page))
+
+		if err := fn(page); err != nil {
+			return err
+		}
+
 		nextURL = parseLinkNext(resp.Header.Get("Link"))
 	}
 
-	return events, nil
+	return nil
 }
 
 // RecentAuditEvents fetches the n most recent Audit Events for org, newest-first.
