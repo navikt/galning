@@ -64,10 +64,11 @@ func (c *Client) token(ctx context.Context) (string, error) {
 // AuditEvents fetches Audit Events for org since afterCursor, calling fn for
 // each page of results. Pass an empty string to fetch from the start of
 // GitHub's retention window. Events are delivered oldest-first.
+// fn receives the page and the next-page cursor (empty string on the last page).
 // If fn returns an error, fetching stops and that error is returned.
 // Rate limit headers are respected: the loop sleeps proactively when fewer
 // than rateLimitMinRemaining requests remain, and retries once on 403/429.
-func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string, fn func([]AuditEvent) error) error {
+func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string, fn func(page []AuditEvent, nextCursor string) error) error {
 	token, err := c.token(ctx)
 	if err != nil {
 		return err
@@ -104,7 +105,9 @@ func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string, fn fu
 
 		slog.Info("fetched page", "count", len(page))
 
-		if err := fn(page); err != nil {
+		nextURL = parseLinkNext(resp.Header.Get("Link"))
+
+		if err := fn(page, nextURL); err != nil {
 			return err
 		}
 
@@ -116,8 +119,6 @@ func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string, fn fu
 				}
 			}
 		}
-
-		nextURL = parseLinkNext(resp.Header.Get("Link"))
 	}
 
 	return nil

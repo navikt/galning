@@ -10,21 +10,26 @@ import (
 	"github.com/navikt/galning/internal/archive"
 	"github.com/navikt/galning/internal/config"
 	"github.com/navikt/galning/internal/github"
+	"github.com/navikt/galning/internal/oauth"
 )
 
 const (
-	dryRunLimit    = 50
+	dryRunLimit     = 50
 	insertBatchSize = 1000
 )
 
-// Run performs a single Ingest Run: derives the Cursor from the Archive,
-// fetches new Audit Events from GitHub, and inserts them into the Archive.
-// Events are buffered into batches of insertBatchSize before each insert,
-// so a rate-limit or failure mid-run will still preserve already-inserted batches.
-func Run(ctx context.Context, cfg config.Config, arc *archive.Archive, ghClient *github.Client) error {
-	cursor, err := arc.LatestCursor(ctx, cfg.GithubOrg)
+// Run performs a single Ingest Run: loads the Cursor from the Store,
+// fetches new Audit Events from GitHub, inserts them into the Archive in
+// batches, and saves the updated Cursor back to the Store after each batch.
+func Run(ctx context.Context, cfg config.Config, arc *archive.Archive, ghClient *github.Client, store oauth.Store) error {
+	pair, err := store.Load(ctx)
 	if err != nil {
-		return fmt.Errorf("derive cursor: %w", err)
+		return fmt.Errorf("load cursor: %w", err)
+	}
+
+	var cursor string
+	if pair != nil {
+		cursor = pair.Cursor
 	}
 
 	var (
@@ -32,7 +37,7 @@ func Run(ctx context.Context, cfg config.Config, arc *archive.Archive, ghClient 
 		total int
 	)
 
-	err = ghClient.AuditEvents(ctx, cfg.GithubOrg, cursor, func(page []github.AuditEvent) error {
+	err = ghClient.AuditEvents(ctx, cfg.GithubOrg, cursor, func(page []github.AuditEvent, nextCursor string) error {
 		buf = append(buf, page...)
 		if len(buf) < insertBatchSize {
 			return nil
@@ -43,6 +48,14 @@ func Run(ctx context.Context, cfg config.Config, arc *archive.Archive, ghClient 
 		total += len(buf)
 		slog.Info("inserted batch", "count", len(buf), "total_so_far", total)
 		buf = buf[:0]
+
+		// Save cursor after each successful batch so we can resume on failure.
+		if nextCursor != "" {
+			if err := saveCursor(ctx, store, pair, nextCursor); err != nil {
+				return fmt.Errorf("save cursor: %w", err)
+			}
+			pair = &oauth.TokenPair{AccessToken: tokenFrom(pair), Cursor: nextCursor}
+		}
 		return nil
 	})
 	if err != nil {
@@ -64,6 +77,25 @@ func Run(ctx context.Context, cfg config.Config, arc *archive.Archive, ghClient 
 
 	slog.Info("ingest run complete", "inserted", total)
 	return nil
+}
+
+// saveCursor persists the updated cursor while preserving the existing access token.
+func saveCursor(ctx context.Context, store oauth.Store, current *oauth.TokenPair, cursor string) error {
+	updated := &oauth.TokenPair{
+		Cursor: cursor,
+	}
+	if current != nil {
+		updated.AccessToken = current.AccessToken
+	}
+	return store.Save(ctx, updated)
+}
+
+// tokenFrom returns the access token from pair, or empty string if pair is nil.
+func tokenFrom(pair *oauth.TokenPair) string {
+	if pair == nil {
+		return ""
+	}
+	return pair.AccessToken
 }
 
 // DryRun fetches the most recent Audit Events from GitHub and logs them to
@@ -94,10 +126,10 @@ func DryRun(ctx context.Context, cfg config.Config, ghClient *github.Client) err
 	return nil
 }
 
-func StartLoop(ctx context.Context, interval time.Duration, cfg config.Config, arc *archive.Archive, ghClient *github.Client) {
+func StartLoop(ctx context.Context, interval time.Duration, cfg config.Config, arc *archive.Archive, ghClient *github.Client, store oauth.Store) {
 	run := func() {
 		slog.Info("ingest run starting", "org", cfg.GithubOrg)
-		if err := Run(ctx, cfg, arc, ghClient); err != nil {
+		if err := Run(ctx, cfg, arc, ghClient, store); err != nil {
 			slog.Error("ingest run failed", "error", err)
 		}
 	}

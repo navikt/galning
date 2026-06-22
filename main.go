@@ -29,12 +29,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// In dry-run mode, tokens are held in memory only — no Secret Manager access needed.
+	// In dry-run mode, tokens and cursor are held in memory only.
 	var store oauth.Store
 	if cfg.DryRun {
 		store = oauth.NewInMemoryStore()
 	} else {
-		ts, err := oauth.NewTokenStore(ctx, cfg.GithubTokenSecret, false)
+		ts, err := oauth.NewTokenStore(ctx, cfg.GithubTokenSecret)
 		if err != nil {
 			slog.Error("create token store", "error", err)
 			os.Exit(1)
@@ -99,7 +99,7 @@ func main() {
 	defer arc.Close()
 
 	// Start the ingest loop in the background.
-	go ingest.StartLoop(ctx, ingestInterval, cfg, arc, ghClient)
+	go ingest.StartLoop(ctx, ingestInterval, cfg, arc, ghClient, store)
 
 	runServer(ctx, server)
 }

@@ -9,7 +9,6 @@ import (
 
 	"cloud.google.com/go/bigquery"
 	"google.golang.org/api/googleapi"
-	"google.golang.org/api/iterator"
 
 	gh "github.com/navikt/galning/internal/github"
 )
@@ -97,35 +96,6 @@ func New(ctx context.Context, projectID, datasetID, tableID string) (*Archive, e
 	}
 
 	return &Archive{table: table, bq: bq}, nil
-}
-
-// LatestCursor queries the Archive for the document_id of the most recently
-// inserted Audit Event for the given org. Returns an empty string if the
-// Archive is empty (first Ingest Run).
-func (a *Archive) LatestCursor(ctx context.Context, org string) (string, error) {
-	query := a.bq.Query(fmt.Sprintf(
-		"SELECT document_id FROM `%s.%s.%s` WHERE org = @org ORDER BY created_at DESC LIMIT 1",
-		a.table.ProjectID, a.table.DatasetID, a.table.TableID,
-	))
-	query.Parameters = []bigquery.QueryParameter{
-		{Name: "org", Value: org},
-	}
-
-	it, err := query.Read(ctx)
-	if err != nil {
-		return "", fmt.Errorf("query cursor: %w", err)
-	}
-
-	var row struct {
-		DocumentID string `bigquery:"document_id"`
-	}
-	if err := it.Next(&row); err != nil {
-		if err == iterator.Done {
-			return "", nil // empty archive — first run
-		}
-		return "", fmt.Errorf("read cursor row: %w", err)
-	}
-	return row.DocumentID, nil
 }
 
 // Insert inserts a batch of Audit Events into the Archive.

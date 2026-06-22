@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -17,14 +16,16 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TokenPair holds a GitHub OAuth user access token.
+// TokenPair holds a GitHub OAuth user access token and the pagination cursor
+// for the audit log. Both are persisted together in Secret Manager.
 // OAuth App tokens do not expire and have no refresh token.
-// ExpiresAt is retained for backwards compatibility with any token already
-// persisted in Secret Manager, but is not used.
+// ExpiresAt and RefreshToken are retained for backwards compatibility with any
+// token already persisted in Secret Manager, but are not used.
 type TokenPair struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
 	ExpiresAt    time.Time `json:"expires_at"`
+	Cursor       string    `json:"cursor,omitempty"`
 }
 
 // Store is the interface for loading and saving the OAuth TokenPair.
@@ -39,21 +40,18 @@ type Store interface {
 type TokenStore struct {
 	client     *secretmanager.Client
 	secretName string // full resource name: projects/{project}/secrets/{name}
-	readOnly   bool   // if true, Save is a no-op (used for local dry-run)
 }
 
 // NewTokenStore creates a TokenStore backed by Google Secret Manager.
 // secretName is the fully-qualified resource name:
 //
 //	projects/PROJECT_ID/secrets/SECRET_NAME
-//
-// When readOnly is true, Save logs a warning and does not write to Secret Manager.
-func NewTokenStore(ctx context.Context, secretName string, readOnly bool) (*TokenStore, error) {
+func NewTokenStore(ctx context.Context, secretName string) (*TokenStore, error) {
 	client, err := secretmanager.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create secret manager client: %w", err)
 	}
-	return &TokenStore{client: client, secretName: secretName, readOnly: readOnly}, nil
+	return &TokenStore{client: client, secretName: secretName}, nil
 }
 
 // Load reads the latest TokenPair from Secret Manager.
@@ -78,13 +76,7 @@ func (s *TokenStore) Load(ctx context.Context) (*TokenPair, error) {
 }
 
 // Save adds a new version of the secret containing the TokenPair.
-// When the store is read-only, Save logs a warning and returns without writing.
 func (s *TokenStore) Save(ctx context.Context, pair *TokenPair) error {
-	if s.readOnly {
-		slog.WarnContext(ctx, "dry-run: skipping secret write", "secret", s.secretName)
-		return nil
-	}
-
 	data, err := json.Marshal(pair) // #nosec G117
 	if err != nil {
 		return fmt.Errorf("marshal token pair: %w", err)
@@ -108,7 +100,7 @@ func (s *TokenStore) Close() error {
 }
 
 // InMemoryStore holds the OAuth TokenPair in memory only.
-// It is used in dry-run mode where no Secret Manager access is available or needed.
+// It is used in dry-run mode where no Secret Manager access is needed.
 type InMemoryStore struct {
 	mu   sync.RWMutex
 	pair *TokenPair
