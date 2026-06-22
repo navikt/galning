@@ -5,13 +5,12 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY main.go .
-COPY internal/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /galning .
+COPY internal/ internal/
 
+RUN CGO_ENABLED=0 go build -o /galning
 
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=builder /galning /galning
-USER nonroot:nonroot
 
 ENTRYPOINT ["/galning"]
