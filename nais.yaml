@@ -34,8 +34,17 @@ spec:
     bigQueryDatasets:
       - name: galning
         permission: READWRITE
-    buckets:
-      - name: galning
+    permissions:
+      - resource:
+          apiVersion: resourcemanager.cnrm.cloud.google.com/v1beta1
+          kind: Project
+          name: the-g-team-prod-9be4
+        role: roles/secretmanager.secretAccessor
+      - resource:
+          apiVersion: resourcemanager.cnrm.cloud.google.com/v1beta1
+          kind: Project
+          name: the-g-team-prod-9be4
+        role: roles/secretmanager.secretVersionAdder
   replicas:
     min: 1
     max: 1
