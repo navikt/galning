@@ -18,7 +18,7 @@ import (
 
 const (
 	githubAuthorizeURL   = "https://github.com/login/oauth/authorize"
-	githubAccessTokenURL = "https://github.com/login/oauth/access_token"
+	githubAccessTokenURL = "https://github.com/login/oauth/access_token" // #nosec G101
 	stateExpiry          = 10 * time.Minute
 )
 

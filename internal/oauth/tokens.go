@@ -85,7 +85,7 @@ func (s *TokenStore) Save(ctx context.Context, pair *TokenPair) error {
 		return nil
 	}
 
-	data, err := json.Marshal(pair)
+	data, err := json.Marshal(pair) // #nosec G117
 	if err != nil {
 		return fmt.Errorf("marshal token pair: %w", err)
 	}
