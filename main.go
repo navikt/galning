@@ -14,7 +14,9 @@ import (
 	"github.com/navikt/galning/internal/config"
 	gh "github.com/navikt/galning/internal/github"
 	"github.com/navikt/galning/internal/ingest"
+	_ "github.com/navikt/galning/internal/metrics" // register Prometheus metrics
 	"github.com/navikt/galning/internal/oauth"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const ingestInterval = 5 * time.Minute
@@ -55,6 +57,7 @@ func main() {
 	mux.HandleFunc("GET /internal/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	mux.Handle("GET /internal/metrics", promhttp.Handler())
 
 	server := &http.Server{
 		Addr:         ":8080",

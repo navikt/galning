@@ -1,0 +1,49 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: galning
+  namespace: the-g-team
+  labels:
+    team: the-g-team
+spec:
+  groups:
+    - name: galning
+      rules:
+        - alert: GalningDown
+          expr: kube_deployment_status_replicas_available{namespace="the-g-team", deployment="galning"} == 0
+          for: 5m
+          annotations:
+            summary: "galning pod is unavailable"
+            consequence: "Audit Events are not being archived. GitHub audit log retention may be breached."
+            action: "Check pod status: `kubectl describe pod -n the-g-team -l app=galning` and `kubectl logs -n the-g-team -l app=galning`"
+            dashboard_url: "https://grafana.nav.cloud.nais.io/goto/bfq3itobmj1fkf"
+            runbook_url: "https://console.nav.cloud.nais.io/team/the-g-team/prod-gcp/app/galning"
+          labels:
+            namespace: the-g-team
+            severity: critical
+
+        - alert: GalningCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total{namespace="the-g-team", container="galning"}[15m]) > 0
+          for: 5m
+          annotations:
+            summary: "galning is crash-looping"
+            consequence: "Audit Events are not being archived. GitHub audit log retention may be breached."
+            action: "Check pod logs: `kubectl logs -n the-g-team -l app=galning --previous`"
+            dashboard_url: "https://grafana.nav.cloud.nais.io/goto/bfq3itobmj1fkf"
+            runbook_url: "https://console.nav.cloud.nais.io/team/the-g-team/prod-gcp/app/galning"
+          labels:
+            namespace: the-g-team
+            severity: critical
+
+        - alert: GalningNoSuccessfulIngestRun
+          expr: increase(galning_ingest_run_total{result="success"}[30m]) == 0
+          for: 10m
+          annotations:
+            summary: "No successful Ingest Run in the last 30 minutes"
+            consequence: "The Archive is falling behind. Audit Events from the past 30+ minutes have not been archived."
+            action: "Check ingest logs for errors: `kubectl logs -n the-g-team -l app=galning | grep 'ingest run'`"
+            dashboard_url: "https://grafana.nav.cloud.nais.io/goto/bfq3itobmj1fkf"
+            runbook_url: "https://console.nav.cloud.nais.io/team/the-g-team/prod-gcp/app/galning"
+          labels:
+            namespace: the-g-team
+            severity: critical

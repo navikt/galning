@@ -11,7 +11,7 @@ on:
       - "go.mod"
       - "go.sum"
       - "Dockerfile"
-      - "nais.yaml"
+      - ".nais/**"
       - ".github/workflows/deploy.yaml"
 
 concurrency:
@@ -46,7 +46,7 @@ jobs:
         id: changed-files
         uses: "nais/what-changed@deb0d90dc05cd478efea4d4ca6dd989bcb3f7aa5" # ratchet:nais/what-changed@main
         with:
-          files: nais.yaml
+          files: .nais/app.yaml,.nais/alerts.yaml
       - name: Push docker image to GAR
         if: steps.changed-files.outputs.changed != 'only-inputs'
         uses: nais/docker-build-push@05dbb6091b30bd84279c6d64a45ef8782fd410a5 # ratchet:nais/docker-build-push@v0
@@ -63,5 +63,5 @@ jobs:
       - uses: nais/deploy/actions/deploy@5fdd91aaf69bb0d6dd5e5118cdacb639f487b93b # ratchet:nais/deploy/actions/deploy@v2
         env:
           CLUSTER: prod-gcp
-          RESOURCE: nais.yaml
+          RESOURCE: .nais/app.yaml,.nais/alerts.yaml
           WORKLOAD_IMAGE: ${{ needs.build.outputs.image }}

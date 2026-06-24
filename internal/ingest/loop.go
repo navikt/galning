@@ -10,6 +10,7 @@ import (
 	"github.com/navikt/galning/internal/archive"
 	"github.com/navikt/galning/internal/config"
 	"github.com/navikt/galning/internal/github"
+	"github.com/navikt/galning/internal/metrics"
 	"github.com/navikt/galning/internal/oauth"
 )
 
@@ -59,22 +60,26 @@ func Run(ctx context.Context, cfg config.Config, arc *archive.Archive, ghClient 
 		return nil
 	})
 	if err != nil {
+		metrics.IngestRunsTotal.WithLabelValues("failure").Inc()
 		return fmt.Errorf("fetch audit events: %w", err)
 	}
 
 	// Flush remaining events that didn't fill a full batch.
 	if len(buf) > 0 {
 		if err := arc.Insert(ctx, buf); err != nil {
+			metrics.IngestRunsTotal.WithLabelValues("failure").Inc()
 			return fmt.Errorf("insert final batch: %w", err)
 		}
 		total += len(buf)
 	}
 
+	metrics.IngestRunsTotal.WithLabelValues("success").Inc()
 	if total == 0 {
 		slog.Info("no new audit events — archive is up to date")
 		return nil
 	}
 
+	metrics.EventsArchivedTotal.Add(float64(total))
 	slog.Info("ingest run complete", "inserted", total)
 	return nil
 }
@@ -114,7 +119,8 @@ func DryRun(ctx context.Context, cfg config.Config, ghClient *github.Client) err
 	}
 
 	for _, e := range events {
-		slog.Info("audit event",
+		slog.Info(
+			"audit event",
 			"document_id", e.DocumentID,
 			"action", e.Action,
 			"actor", e.Actor,

@@ -127,7 +127,7 @@ func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string, fn fu
 // doWithRetry performs a GET request and retries once on 403/429 rate limit
 // responses after sleeping until the reset time indicated in the headers.
 func (c *Client) doWithRetry(ctx context.Context, token, url string) (*http.Response, []byte, error) {
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := range 2 {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, nil, err
