@@ -12,7 +12,8 @@ tool (
 
 require (
 	cloud.google.com/go/bigquery v1.77.0
-	cloud.google.com/go/secretmanager v1.16.0
+	cloud.google.com/go/secretmanager v1.20.0
+	github.com/prometheus/client_golang v1.23.2
 	google.golang.org/api v0.285.0
 	google.golang.org/grpc v1.81.1
 )
@@ -52,7 +53,6 @@ require (
 	github.com/openai/openai-go/v3 v3.37.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.18 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
