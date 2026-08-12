@@ -41,9 +41,9 @@ run = "go fix ./..."
 [settings]
 env_file = ".env"
 
-[tasks."local"]
-description = "Run Go locally"
-run = "fnox exec -- go run ."
+[tasks."local:digest"]
+description = "Run the ingest binary locally (dry-run by default)"
+run = "fnox exec -- go run ./cmd/ingest"
 
 [tasks."test"]
 description = "Test Go code"

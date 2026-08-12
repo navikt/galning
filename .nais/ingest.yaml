@@ -6,6 +6,9 @@ metadata:
   labels:
     team: the-g-team
 spec:
+  # Image supplied at deploy time via WORKLOAD_IMAGE; contains both binaries.
+  command:
+    - /ingest
   ingresses:
     - https://galning.nav.no/api/callback
     - https://galning.intern.nav.no/internal/api/authorize

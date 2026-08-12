@@ -7,9 +7,9 @@ metadata:
     team: the-g-team
 spec:
   groups:
-    - name: galning
+    - name: galning-digest
       rules:
-        - alert: GalningDown
+        - alert: GalningDigestDown
           expr: kube_deployment_status_replicas_available{namespace="the-g-team", deployment="galning"} == 0
           for: 5m
           annotations:
@@ -22,7 +22,7 @@ spec:
             namespace: the-g-team
             severity: critical
 
-        - alert: GalningCrashLooping
+        - alert: GalningDigestCrashLooping
           expr: increase(kube_pod_container_status_restarts_total{namespace="the-g-team", container="galning"}[15m]) > 0
           for: 5m
           annotations:
@@ -35,7 +35,7 @@ spec:
             namespace: the-g-team
             severity: critical
 
-        - alert: GalningNoSuccessfulIngestRun
+        - alert: GalningDigestNoSuccessfulIngestRun
           expr: increase(galning_ingest_run_total{result="success"}[30m]) == 0
           for: 10m
           annotations:
