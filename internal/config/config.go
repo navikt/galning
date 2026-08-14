@@ -20,6 +20,7 @@ type Config struct {
 
 	DryRun         bool
 	DigestInterval time.Duration
+	LogFormat      string // LogFormat defaults to JSON
 }
 
 func FromEnv() Config {
@@ -34,6 +35,7 @@ func FromEnv() Config {
 		GithubTokenSecret:  os.Getenv("GITHUB_TOKEN_SECRET"),
 		DryRun:             os.Getenv("DRY_RUN") == "true",
 		DigestInterval:     5 * time.Minute,
+		LogFormat:          os.Getenv("LOG_FORMAT"),
 	}
 }
 

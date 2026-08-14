@@ -15,6 +15,7 @@ import (
 	"github.com/navikt/galning/internal/config"
 	gh "github.com/navikt/galning/internal/github"
 	"github.com/navikt/galning/internal/ingest"
+	"github.com/navikt/galning/internal/logging"
 	"github.com/navikt/galning/internal/metrics"
 	"github.com/navikt/galning/internal/oauth"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -25,6 +26,8 @@ func main() {
 	defer stop()
 
 	cfg := config.FromEnv()
+	logging.Setup(cfg.LogFormat)
+
 	if err := cfg.ValidateIngest(); err != nil {
 		slog.Error("missing configuration", "error", err)
 		os.Exit(1)

@@ -13,6 +13,7 @@ import (
 	"cloud.google.com/go/bigquery"
 	"github.com/navikt/galning/internal/config"
 	gh "github.com/navikt/galning/internal/github"
+	"github.com/navikt/galning/internal/logging"
 	"github.com/navikt/galning/internal/oauth"
 	"github.com/navikt/galning/internal/query"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -23,6 +24,8 @@ func main() {
 	defer stop()
 
 	cfg := config.FromEnv()
+	logging.Setup(cfg.LogFormat)
+
 	if err := cfg.ValidateQuery(); err != nil {
 		slog.Error("missing configuration", "error", err)
 		os.Exit(1)
