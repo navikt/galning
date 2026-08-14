@@ -7,9 +7,9 @@ metadata:
     team: the-g-team
 spec:
   groups:
-    - name: galning-digest
+    - name: galning-ingest
       rules:
-        - alert: GalningDigestDown
+        - alert: GalningIngestDown
           expr: kube_deployment_status_replicas_available{namespace="the-g-team", deployment="galning"} == 0
           for: 5m
           annotations:
@@ -22,7 +22,7 @@ spec:
             namespace: the-g-team
             severity: critical
 
-        - alert: GalningDigestCrashLooping
+        - alert: GalningIngestCrashLooping
           expr: increase(kube_pod_container_status_restarts_total{namespace="the-g-team", container="galning"}[15m]) > 0
           for: 5m
           annotations:
@@ -35,7 +35,7 @@ spec:
             namespace: the-g-team
             severity: critical
 
-        - alert: GalningDigestNoSuccessfulIngestRun
+        - alert: GalningIngestNoSuccessfulIngestRun
           expr: increase(galning_ingest_run_total{result="success"}[30m]) == 0
           for: 10m
           annotations:
@@ -44,6 +44,32 @@ spec:
             action: "Check ingest logs for errors: `kubectl logs -n the-g-team -l app=galning | grep 'ingest run'`"
             dashboard_url: "https://grafana.nav.cloud.nais.io/goto/bfq3itobmj1fkf"
             runbook_url: "https://console.nav.cloud.nais.io/team/the-g-team/prod-gcp/app/galning"
+          labels:
+            namespace: the-g-team
+            severity: critical
+
+    - name: galning-query
+      rules:
+        - alert: GalningQueryDown
+          expr: kube_deployment_status_replicas_available{namespace="the-g-team", deployment="galning-query"} == 0
+          for: 5m
+          annotations:
+            summary: "galning-query pod is unavailable"
+            consequence: "Users cannot query Audit Events from the Archive."
+            action: "Check pod status: `kubectl describe pod -n the-g-team -l app=galning-query` and `kubectl logs -n the-g-team -l app=galning-query`"
+            runbook_url: "https://console.nav.cloud.nais.io/team/the-g-team/prod-gcp/app/galning-query"
+          labels:
+            namespace: the-g-team
+            severity: critical
+
+        - alert: GalningQueryCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace="the-g-team", container="galning-query"}[15m]) > 0
+          for: 5m
+          annotations:
+            summary: "galning-query is crash-looping"
+            consequence: "Users cannot query Audit Events from the Archive."
+            action: "Check pod logs: `kubectl logs -n the-g-team -l app=galning-query --previous`"
+            runbook_url: "https://console.nav.cloud.nais.io/team/the-g-team/prod-gcp/app/galning-query"
           labels:
             namespace: the-g-team
             severity: critical

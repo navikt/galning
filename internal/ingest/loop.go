@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/navikt/galning/internal/archive"
 	"github.com/navikt/galning/internal/config"
 	"github.com/navikt/galning/internal/github"
 	"github.com/navikt/galning/internal/metrics"
@@ -22,10 +21,13 @@ const (
 // Run performs a single Ingest Run: loads the Cursor from the Store,
 // fetches new Audit Events from GitHub, inserts them into the Archive in
 // batches, and saves the updated Cursor back to the Store after each batch.
-func Run(ctx context.Context, cfg config.Config, arc *archive.Archive, ghClient *github.Client, store oauth.Store) error {
+func Run(ctx context.Context, cfg config.Config, bq *BigQueryClient, ghClient *github.AuditClient, store oauth.Store) error {
 	pair, err := store.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("load cursor: %w", err)
+	}
+	if pair == nil {
+		return fmt.Errorf("not authorised — visit /ingest/authorize to complete the GitHub OAuth flow")
 	}
 
 	var cursor string
@@ -38,12 +40,12 @@ func Run(ctx context.Context, cfg config.Config, arc *archive.Archive, ghClient 
 		total int
 	)
 
-	err = ghClient.AuditEvents(ctx, cfg.GithubOrg, cursor, func(page []github.AuditEvent, nextCursor string) error {
+	err = ghClient.AuditEvents(ctx, cfg.GithubOrg, pair.AccessToken, cursor, func(page []github.AuditEvent, nextCursor string) error {
 		buf = append(buf, page...)
 		if len(buf) < insertBatchSize {
 			return nil
 		}
-		if err := arc.Insert(ctx, buf); err != nil {
+		if err := bq.Insert(ctx, buf); err != nil {
 			return fmt.Errorf("insert batch: %w", err)
 		}
 		total += len(buf)
@@ -66,7 +68,7 @@ func Run(ctx context.Context, cfg config.Config, arc *archive.Archive, ghClient 
 
 	// Flush remaining events that didn't fill a full batch.
 	if len(buf) > 0 {
-		if err := arc.Insert(ctx, buf); err != nil {
+		if err := bq.Insert(ctx, buf); err != nil {
 			metrics.IngestRunsTotal.WithLabelValues("failure").Inc()
 			return fmt.Errorf("insert final batch: %w", err)
 		}
@@ -105,10 +107,18 @@ func tokenFrom(pair *oauth.TokenPair) string {
 
 // DryRun fetches the most recent Audit Events from GitHub and logs them to
 // stdout. No events are written to the Archive. Used for local testing.
-func DryRun(ctx context.Context, cfg config.Config, ghClient *github.Client) error {
+func DryRun(ctx context.Context, cfg config.Config, ghClient *github.AuditClient, store oauth.Store) error {
+	pair, err := store.Load(ctx)
+	if err != nil {
+		return fmt.Errorf("load token: %w", err)
+	}
+	if pair == nil {
+		return fmt.Errorf("not authorised — visit /internal/api/authorize to complete the GitHub OAuth flow")
+	}
+
 	slog.Info("dry-run: fetching recent audit events", "org", cfg.GithubOrg, "limit", dryRunLimit)
 
-	events, err := ghClient.RecentAuditEvents(ctx, cfg.GithubOrg, dryRunLimit)
+	events, err := ghClient.RecentAuditEvents(ctx, cfg.GithubOrg, pair.AccessToken, dryRunLimit)
 	if err != nil {
 		return fmt.Errorf("fetch recent audit events: %w", err)
 	}
@@ -132,17 +142,17 @@ func DryRun(ctx context.Context, cfg config.Config, ghClient *github.Client) err
 	return nil
 }
 
-func StartLoop(ctx context.Context, interval time.Duration, cfg config.Config, arc *archive.Archive, ghClient *github.Client, store oauth.Store) {
+func StartLoop(ctx context.Context, cfg config.Config, bq *BigQueryClient, ghClient *github.AuditClient, store oauth.Store) {
 	run := func() {
 		slog.Info("ingest run starting", "org", cfg.GithubOrg)
-		if err := Run(ctx, cfg, arc, ghClient, store); err != nil {
+		if err := Run(ctx, cfg, bq, ghClient, store); err != nil {
 			slog.Error("ingest run failed", "error", err)
 		}
 	}
 
 	run() // run immediately on startup
 
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(cfg.DigestInterval)
 	defer ticker.Stop()
 
 	for {

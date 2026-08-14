@@ -8,9 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
-
-	"github.com/navikt/galning/internal/oauth"
 )
 
 const (
@@ -34,31 +33,17 @@ type AuditEvent struct {
 	Raw           json.RawMessage `json:"-"`
 }
 
-// Client fetches audit events from GitHub using a user access token.
-type Client struct {
-	store      oauth.Store
+// AuditClient fetches audit events from GitHub. It holds no state beyond an HTTP
+// client; the caller provides the access token on each call.
+type AuditClient struct {
 	httpClient *http.Client
 }
 
-// NewClient constructs a Client backed by the given Store.
-func NewClient(store oauth.Store) *Client {
-	return &Client{
-		store:      store,
+// NewAuditClient constructs a Client.
+func NewAuditClient() *AuditClient {
+	return &AuditClient{
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
-}
-
-// token returns the access token from the store.
-// Returns an error if no token has been stored yet (OAuth flow not completed).
-func (c *Client) token(ctx context.Context) (string, error) {
-	pair, err := c.store.Load(ctx)
-	if err != nil {
-		return "", fmt.Errorf("load tokens: %w", err)
-	}
-	if pair == nil {
-		return "", fmt.Errorf("not authorised — visit /internal/api/authorize to complete the GitHub OAuth flow")
-	}
-	return pair.AccessToken, nil
 }
 
 // AuditEvents fetches Audit Events for org since afterCursor, calling fn for
@@ -68,12 +53,7 @@ func (c *Client) token(ctx context.Context) (string, error) {
 // If fn returns an error, fetching stops and that error is returned.
 // Rate limit headers are respected: the loop sleeps proactively when fewer
 // than rateLimitMinRemaining requests remain, and retries once on 403/429.
-func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string, fn func(page []AuditEvent, nextCursor string) error) error {
-	token, err := c.token(ctx)
-	if err != nil {
-		return err
-	}
-
+func (c *AuditClient) AuditEvents(ctx context.Context, org, token, afterCursor string, fn func(page []AuditEvent, nextCursor string) error) error {
 	nextURL := fmt.Sprintf("%s/orgs/%s/audit-log?per_page=%d&order=asc", apiBase, org, pageSize)
 	if afterCursor != "" {
 		nextURL += "&after=" + afterCursor
@@ -126,7 +106,7 @@ func (c *Client) AuditEvents(ctx context.Context, org, afterCursor string, fn fu
 
 // doWithRetry performs a GET request and retries once on 403/429 rate limit
 // responses after sleeping until the reset time indicated in the headers.
-func (c *Client) doWithRetry(ctx context.Context, token, url string) (*http.Response, []byte, error) {
+func (c *AuditClient) doWithRetry(ctx context.Context, token, url string) (*http.Response, []byte, error) {
 	for attempt := range 2 {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
@@ -134,7 +114,6 @@ func (c *Client) doWithRetry(ctx context.Context, token, url string) (*http.Resp
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Accept", "application/vnd.github+json")
-		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -214,12 +193,7 @@ func sleepUntilReset(ctx context.Context, reset time.Time, reason string) error 
 
 // RecentAuditEvents fetches the n most recent Audit Events for org, newest-first.
 // It fetches a single page only — no pagination.
-func (c *Client) RecentAuditEvents(ctx context.Context, org string, n int) ([]AuditEvent, error) {
-	token, err := c.token(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c *AuditClient) RecentAuditEvents(ctx context.Context, org, token string, n int) ([]AuditEvent, error) {
 	u := fmt.Sprintf("%s/orgs/%s/audit-log?per_page=%d&order=desc", apiBase, org, n)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -260,72 +234,20 @@ func (c *Client) RecentAuditEvents(ctx context.Context, org string, n int) ([]Au
 }
 
 // parseLinkNext extracts the URL from a GitHub Link header's rel="next" entry.
+// The header looks like: <url1>; rel="next", <url2>; rel="last"
 func parseLinkNext(link string) string {
-	if link == "" {
-		return ""
-	}
-	for _, part := range splitLink(link) {
-		u, rel := parseLinkPart(part)
-		if rel == "next" {
-			return u
+	for part := range strings.SplitSeq(link, ",") {
+		urlPart, params, found := strings.Cut(part, ";")
+		if !found {
+			continue
 		}
-	}
-	return ""
-}
-
-func splitLink(link string) []string {
-	var parts []string
-	depth := 0
-	start := 0
-	for i, ch := range link {
-		switch ch {
-		case '<':
-			depth++
-		case '>':
-			depth--
-		case ',':
-			if depth == 0 {
-				parts = append(parts, link[start:i])
-				start = i + 1
+		url := strings.TrimSpace(strings.Trim(urlPart, "<>"))
+		for p := range strings.SplitSeq(params, ";") {
+			p = strings.TrimSpace(p)
+			if p == `rel="next"` {
+				return url
 			}
 		}
 	}
-	return append(parts, link[start:])
-}
-
-func parseLinkPart(part string) (u, rel string) {
-	lt, gt := -1, -1
-	for i, ch := range part {
-		if ch == '<' && lt == -1 {
-			lt = i
-		}
-		if ch == '>' && gt == -1 {
-			gt = i
-		}
-	}
-	if lt == -1 || gt == -1 || gt <= lt {
-		return "", ""
-	}
-	u = part[lt+1 : gt]
-	rest := part[gt+1:]
-	const relKey = `rel="`
-	idx := indexOf(rest, relKey)
-	if idx == -1 {
-		return u, ""
-	}
-	rest = rest[idx+len(relKey):]
-	end := indexOf(rest, `"`)
-	if end == -1 {
-		return u, ""
-	}
-	return u, rest[:end]
-}
-
-func indexOf(s, sub string) int {
-	for i := range s {
-		if i+len(sub) <= len(s) && s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
+	return ""
 }

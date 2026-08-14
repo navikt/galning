@@ -41,9 +41,13 @@ run = "go fix ./..."
 [settings]
 env_file = ".env"
 
-[tasks."local:digest"]
+[tasks."local:ingest"]
 description = "Run the ingest binary locally (dry-run by default)"
-run = "fnox exec -- go run ./cmd/ingest"
+run = "fnox --config fnox-ingest.toml exec -- go run ./cmd/ingest"
+
+[tasks."local:query"]
+description = "Run the query binary locally against the real Archive"
+run = "fnox --config fnox-query.toml exec -- go run ./cmd/query"
 
 [tasks."test"]
 description = "Test Go code"

@@ -19,6 +19,7 @@ var (
 	)
 )
 
-func init() {
+// RegisterIngest registers the ingest metrics with the default Prometheus registry.
+func RegisterIngest() {
 	prometheus.MustRegister(IngestRunsTotal, EventsArchivedTotal)
 }

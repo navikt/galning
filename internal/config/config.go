@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
+	"time"
 )
 
 type Config struct {
@@ -16,11 +18,12 @@ type Config struct {
 	GithubCallbackURL  string
 	GithubTokenSecret  string
 
-	DryRun bool
+	DryRun         bool
+	DigestInterval time.Duration
 }
 
-func FromEnv() (Config, error) {
-	cfg := Config{
+func FromEnv() Config {
+	return Config{
 		BigQueryProject:    os.Getenv("BIGQUERY_PROJECT"),
 		BigQueryDataset:    os.Getenv("BIGQUERY_DATASET"),
 		BigQueryTable:      os.Getenv("BIGQUERY_TABLE"),
@@ -30,31 +33,53 @@ func FromEnv() (Config, error) {
 		GithubCallbackURL:  os.Getenv("GITHUB_CALLBACK_URL"),
 		GithubTokenSecret:  os.Getenv("GITHUB_TOKEN_SECRET"),
 		DryRun:             os.Getenv("DRY_RUN") == "true",
+		DigestInterval:     5 * time.Minute,
 	}
+}
 
+// ValidateIngest checks the vars required by the ingest binary.
+func (c Config) ValidateIngest() error {
 	required := map[string]string{
-		"GITHUB_ORG":           cfg.GithubOrg,
-		"GITHUB_CLIENT_ID":     cfg.GithubClientID,
-		"GITHUB_CLIENT_SECRET": cfg.GithubClientSecret,
-		"GITHUB_CALLBACK_URL":  cfg.GithubCallbackURL,
-	}
-	if !cfg.DryRun {
-		required["GITHUB_TOKEN_SECRET"] = cfg.GithubTokenSecret
-		required["BIGQUERY_PROJECT"] = cfg.BigQueryProject
-		required["BIGQUERY_DATASET"] = cfg.BigQueryDataset
-		required["BIGQUERY_TABLE"] = cfg.BigQueryTable
+		"GITHUB_ORG":           c.GithubOrg,
+		"GITHUB_CLIENT_ID":     c.GithubClientID,
+		"GITHUB_CLIENT_SECRET": c.GithubClientSecret,
+		"GITHUB_CALLBACK_URL":  c.GithubCallbackURL,
 	}
 
-	var missing []string
+	// Dry-run holds tokens and cursor in memory and skips BigQuery.
+	if !c.DryRun {
+		required["GITHUB_TOKEN_SECRET"] = c.GithubTokenSecret
+		required["BIGQUERY_PROJECT"] = c.BigQueryProject
+		required["BIGQUERY_DATASET"] = c.BigQueryDataset
+		required["BIGQUERY_TABLE"] = c.BigQueryTable
+	}
+
+	return missing(required)
+}
+
+// ValidateQuery checks the vars required by the query binary.
+func (c Config) ValidateQuery() error {
+	return missing(map[string]string{
+		"GITHUB_ORG":           c.GithubOrg,
+		"GITHUB_CLIENT_ID":     c.GithubClientID,
+		"GITHUB_CLIENT_SECRET": c.GithubClientSecret,
+		"GITHUB_CALLBACK_URL":  c.GithubCallbackURL,
+		"BIGQUERY_PROJECT":     c.BigQueryProject,
+		"BIGQUERY_DATASET":     c.BigQueryDataset,
+		"BIGQUERY_TABLE":       c.BigQueryTable,
+	})
+}
+
+func missing(required map[string]string) error {
+	var absent []string
 	for name, val := range required {
 		if val == "" {
-			missing = append(missing, name)
+			absent = append(absent, name)
 		}
 	}
-
-	if len(missing) > 0 {
-		return Config{}, fmt.Errorf("required env vars not set: %v", missing)
+	if len(absent) > 0 {
+		sort.Strings(absent)
+		return fmt.Errorf("required env vars not set: %v", absent)
 	}
-
-	return cfg, nil
+	return nil
 }

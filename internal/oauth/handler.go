@@ -12,14 +12,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 )
 
 const (
 	githubAuthorizeURL   = "https://github.com/login/oauth/authorize"
 	githubAccessTokenURL = "https://github.com/login/oauth/access_token" // #nosec G101
-	stateExpiry          = 10 * time.Minute
 )
 
 // Handler serves the GitHub OAuth authorization and callback endpoints.
@@ -29,9 +27,7 @@ type Handler struct {
 	callbackURL  string
 	store        Store
 	httpClient   *http.Client
-
-	mu     sync.Mutex
-	states map[string]time.Time // state → expiry
+	states       *stateSet
 }
 
 // NewHandler creates an OAuth Handler.
@@ -42,23 +38,18 @@ func NewHandler(clientID, clientSecret, callbackURL string, store Store) *Handle
 		callbackURL:  callbackURL,
 		store:        store,
 		httpClient:   &http.Client{Timeout: 15 * time.Second},
-		states:       make(map[string]time.Time),
+		states:       newStateSet(),
 	}
 }
 
 // Authorize redirects the user to GitHub's OAuth authorization page.
 // GET /api/authorize
 func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
-	state, err := randomState()
+	state, err := h.states.add()
 	if err != nil {
 		http.Error(w, "failed to generate state", http.StatusInternalServerError)
 		return
 	}
-
-	h.mu.Lock()
-	h.pruneStates()
-	h.states[state] = time.Now().Add(stateExpiry)
-	h.mu.Unlock()
 
 	params := url.Values{
 		"client_id":    {h.clientID},
@@ -89,14 +80,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.mu.Lock()
-	expiry, ok := h.states[state]
-	if ok {
-		delete(h.states, state)
-	}
-	h.mu.Unlock()
-
-	if !ok || time.Now().After(expiry) {
+	if !h.states.consume(state) {
 		http.Error(w, "invalid or expired state — please restart the authorization flow", http.StatusBadRequest)
 		return
 	}
@@ -167,16 +151,6 @@ func (h *Handler) exchange(ctx context.Context, code string) (*TokenPair, error)
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
 	}, nil
-}
-
-// pruneStates removes expired state entries. Must be called with h.mu held.
-func (h *Handler) pruneStates() {
-	now := time.Now()
-	for s, exp := range h.states {
-		if now.After(exp) {
-			delete(h.states, s)
-		}
-	}
 }
 
 func randomState() (string, error) {

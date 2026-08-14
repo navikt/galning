@@ -1,4 +1,4 @@
-package archive
+package ingest
 
 import (
 	"context"
@@ -60,16 +60,16 @@ var Schema = bigquery.Schema{
 	{Name: "raw", Type: bigquery.JSONFieldType, Required: true},
 }
 
-// Archive wraps the BigQuery table for the compliance Archive.
-type Archive struct {
+// BigQueryClient wraps the BigQuery table for the compliance BigQueryClient.
+type BigQueryClient struct {
 	table *bigquery.Table
 	bq    *bigquery.Client
 }
 
-// New connects to BigQuery and returns an Archive for the given table.
+// NewBigQueryClient connects to BigQuery and returns an Archive for the given table.
 // It creates the table if it does not exist, with date partitioning on
 // created_at and clustering on action.
-func New(ctx context.Context, projectID, datasetID, tableID string) (*Archive, error) {
+func NewBigQueryClient(ctx context.Context, projectID, datasetID, tableID string) (*BigQueryClient, error) {
 	bq, err := bigquery.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("bigquery client: %w", err)
@@ -95,11 +95,11 @@ func New(ctx context.Context, projectID, datasetID, tableID string) (*Archive, e
 		}
 	}
 
-	return &Archive{table: table, bq: bq}, nil
+	return &BigQueryClient{table: table, bq: bq}, nil
 }
 
 // Insert inserts a batch of Audit Events into the Archive.
-func (a *Archive) Insert(ctx context.Context, events []gh.AuditEvent) error {
+func (a *BigQueryClient) Insert(ctx context.Context, events []gh.AuditEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -124,7 +124,7 @@ func (a *Archive) Insert(ctx context.Context, events []gh.AuditEvent) error {
 }
 
 // Close releases the BigQuery client resources.
-func (a *Archive) Close() error {
+func (a *BigQueryClient) Close() error {
 	return a.bq.Close()
 }
 

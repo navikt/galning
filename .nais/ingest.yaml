@@ -3,15 +3,11 @@ kind: Application
 metadata:
   name: galning
   namespace: the-g-team
-  labels:
-    team: the-g-team
 spec:
-  # Image supplied at deploy time via WORKLOAD_IMAGE; contains both binaries.
   command:
     - /ingest
   ingresses:
-    - https://galning.nav.no/api/callback
-    - https://galning.intern.nav.no/internal/api/authorize
+    - https://galning.intern.nav.no/ingest
   liveness:
     path: /internal/healthz
     initialDelay: 5
@@ -28,7 +24,7 @@ spec:
     - name: GITHUB_ORG
       value: navikt
     - name: GITHUB_CALLBACK_URL
-      value: https://galning.nav.no/api/callback
+      value: https://galning.nav.no/ingest/callback
     - name: GITHUB_TOKEN_SECRET
       value: projects/the-g-team-prod-9be4/secrets/galning-oauth-tokens
   envFrom:

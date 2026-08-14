@@ -1,0 +1,45 @@
+apiVersion: nais.io/v1alpha1
+kind: Application
+metadata:
+  name: galning-query
+  namespace: the-g-team
+spec:
+  command:
+    - /query
+  ingresses:
+    - https://galning.intern.nav.no/query
+  liveness:
+    path: /internal/healthz
+    initialDelay: 5
+  readiness:
+    path: /internal/healthz
+    initialDelay: 5
+  env:
+    - name: GITHUB_ORG
+      value: navikt
+    - name: BIGQUERY_PROJECT
+      value: the-g-team-prod-9be4
+    - name: BIGQUERY_DATASET
+      value: galning
+    - name: BIGQUERY_TABLE
+      value: audit_events
+    - name: GITHUB_CALLBACK_URL
+      value: https://galning.intern.nav.no/query/callback
+  envFrom:
+    - secret: galning-query
+  gcp:
+    bigQueryDatasets:
+      - name: galning
+        permission: READ
+  replicas:
+    min: 1
+    max: 1
+  prometheus:
+    enabled: true
+    path: /internal/metrics
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
