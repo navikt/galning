@@ -36,13 +36,15 @@ func Run(ctx context.Context, cfg config.Config, bq *BigQueryClient, ghClient *g
 	}
 
 	var (
-		buf   []github.AuditEvent
-		total int
+		buf        []github.AuditEvent
+		total      int
+		lastCursor string
 	)
 
 	err = ghClient.AuditEvents(ctx, cfg.GithubOrg, pair.AccessToken, cursor, func(page []github.AuditEvent, nextCursor string) error {
 		buf = append(buf, page...)
 		if len(buf) < insertBatchSize {
+			lastCursor = nextCursor
 			return nil
 		}
 		if err := bq.Insert(ctx, buf); err != nil {
@@ -58,6 +60,7 @@ func Run(ctx context.Context, cfg config.Config, bq *BigQueryClient, ghClient *g
 				return fmt.Errorf("save cursor: %w", err)
 			}
 			pair = &oauth.TokenPair{AccessToken: tokenFrom(pair), Cursor: nextCursor}
+			lastCursor = ""
 		}
 		return nil
 	})
@@ -73,6 +76,13 @@ func Run(ctx context.Context, cfg config.Config, bq *BigQueryClient, ghClient *g
 			return fmt.Errorf("insert final batch: %w", err)
 		}
 		total += len(buf)
+
+		if lastCursor != "" {
+			if err := saveCursor(ctx, store, pair, lastCursor); err != nil {
+				metrics.IngestRunsTotal.WithLabelValues("failure").Inc()
+				return fmt.Errorf("save cursor: %w", err)
+			}
+		}
 	}
 
 	metrics.IngestRunsTotal.WithLabelValues("success").Inc()
