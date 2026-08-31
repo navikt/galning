@@ -11,11 +11,11 @@ tool (
 )
 
 require (
-	cloud.google.com/go/bigquery v1.80.0
+	cloud.google.com/go/bigquery v1.81.0
 	cloud.google.com/go/secretmanager v1.21.0
 	github.com/prometheus/client_golang v1.24.1
 	google.golang.org/api v0.293.0
-	google.golang.org/grpc v1.83.0
+	google.golang.org/grpc v1.83.1
 )
 
 require (
