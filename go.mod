@@ -11,10 +11,10 @@ tool (
 )
 
 require (
-	cloud.google.com/go/bigquery v1.85.0
-	cloud.google.com/go/secretmanager v1.22.0
+	cloud.google.com/go/bigquery v1.86.0
+	cloud.google.com/go/secretmanager v1.23.0
 	github.com/prometheus/client_golang v1.25.0
-	google.golang.org/api v0.304.0
+	google.golang.org/api v0.308.0
 	google.golang.org/grpc v1.84.0
 )
 
@@ -89,7 +89,7 @@ require (
 	google.golang.org/genai v1.75.0 // indirect
 	google.golang.org/genproto v0.0.0-20260715232425-e75dac1f907d // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260715232425-e75dac1f907d // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261012220534-4341edf3f941 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	honnef.co/go/tools v0.8.2 // indirect
 	mvdan.cc/gofumpt v0.12.0 // indirect
